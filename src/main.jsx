@@ -2,13 +2,14 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import router from "./routers";
 import { RouterProvider } from "react-router-dom";
+import "@smastrom/react-rating/style.css";
 import "./index.css";
-import { MainLayout } from "./layouts/MainLayout";
+import { RecoilProvider } from "./providers";
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
-    <MainLayout>
+    <RecoilProvider>
       <RouterProvider router={router} />
-    </MainLayout>
+    </RecoilProvider>
   </React.StrictMode>
 );
