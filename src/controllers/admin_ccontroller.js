@@ -1,6 +1,5 @@
 const prisma = require('../libs/prisma');
-const { VSResep } = require('../libs/validation/resep');
-const util = require('util');
+const { VSResep, VSUpdateResep } = require('../libs/validation/resep');
 const cloudinary = require('../libs/cloudinary');
 const { Readable } = require('stream');
 
@@ -28,11 +27,11 @@ const createResepImage = async (req, res, next) => {
           },
         });
 
-        res.status(201).json({
+        return res.status(201).json({
           message: 'Gambar untuk resep ini telah ditambahkan',
           data: {
             id: createdResepImage.id,
-            url: createdResepImage.image_url
+            url: createdResepImage.image_url,
           },
         });
       } catch (dbError) {
@@ -46,7 +45,7 @@ const createResepImage = async (req, res, next) => {
 
     const readableStream = new Readable();
     readableStream._read = () => {};
-    readableStream.push(req.file.buffer);
+    readableStream.push(req.file?.buffer);
     readableStream.push(null);
 
     readableStream.pipe(uploadStream);
@@ -56,11 +55,9 @@ const createResepImage = async (req, res, next) => {
   }
 };
 
-
-
 const createResep = async (req, res, next) => {
   try {
-    const { name, description, history, culture, ingredients, alternatifIngredient } = req.body;
+    const { name, description, history, culture, ingredients, alternatifIngredient, categories_id } = req.body;
     VSResep.parse(req.body);
 
     const resep = await prisma.resep.create({
@@ -71,8 +68,13 @@ const createResep = async (req, res, next) => {
         culture,
         ingredients,
         alternatifIngredient,
+        categories: {
+          connect : {
+            id: categories_id,
+          }
+        }
       },
-      select : {
+      select: {
         id: true,
         name: true,
         description: true,
@@ -80,7 +82,8 @@ const createResep = async (req, res, next) => {
         culture: true,
         ingredients: true,
         alternatifIngredient: true,
-      }
+        categories: true,
+      },
     });
 
     res.status(201).json({
@@ -93,76 +96,134 @@ const createResep = async (req, res, next) => {
 };
 
 const getAllResep = async (req, res, next) => {
-    try {
-      const resepList = await prisma.resep.findMany({
-        where: {
-          deletedAt: null,
-          
-        },
-        select: {
-          id: true,
-          name: true,
-          description: true,
-          history: true,
-          culture: true,
-          ingredients: true,
-          alternatifIngredient: true,
-          resepImages: {
-            where: {
-              deletedAt: null,
-            },
-            select: {
-              id: true,
-              image_url: true,
-            }
-          }
-        },
-      });
-  
-      res.status(200).json({
-        message: 'Daftar resep',
-        data: resepList,
-      });
-    } catch (error) {
-      next(error);
-    }
-  };
+  try {
+    const { search, page = 1 } = req.query;
+    const limit = 8; 
 
-  const deleteResep = async (req, res, next) => {
-    try {
-      const resepId = req.params.id;
-  
-      const deletedResep = await prisma.resep.update({
-        where: {
-          id: parseInt(resepId),
+    let whereClause = {
+      deletedAt: null,
+    };
+
+    if (search) {
+      whereClause = {
+        ...whereClause,
+        name: {
+          contains: search,
+          mode: 'insensitive',
         },
-        data: {
-          deletedAt: new Date(),
-        },
-      });
-  
-      if (!deletedResep) {
-        return res.status(404).json({
-          message: 'resep tidak ditemukan.',
-        });
-      }
-  
-      res.status(200).json({
-        message: 'berhasil menghapus resep.',
-      });
-    } catch (error) {
-      console.error(error);
-      next(error);
+      };
     }
-  };
+
+    const totalCount = await prisma.resep.count({
+      where: whereClause,
+    });
+
+    if (totalCount === 0) {
+      return res.status(404).json({
+        message: 'Resep yang kamu cari belum ada',
+      });
+    }
+
+    const totalPages = Math.ceil(totalCount / limit);
+    const currentPage = Math.min(Math.max(1, parseInt(page)), totalPages);
+
+    const offset = (currentPage - 1) * limit;
+
+    const resepList = await prisma.resep.findMany({
+      where: whereClause,
+      skip: offset,
+      take: limit,
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        averageRating: true,
+        culture: true,
+        resepImages: {
+          where: {
+            deletedAt: null,
+          },
+          select: {
+            id: true,
+            image_url: true,
+          },
+        },
+      },
+    });
+
+    const resepDetailWithCountUserSave = await Promise.all(resepList.map(async (resepMap) => {
+      const userCount = await prisma.savedRecipe.count({
+        where: {
+          resepId: resepMap.id,
+        },
+      });
+
+      return {
+        ...resepMap,
+        saved_recipe: userCount,
+      };
+    }));
+
+    const meta = {
+      current_page: currentPage,
+      total_resep: totalCount,
+      total_page: totalPages,
+      next_page: currentPage < totalPages ? currentPage + 1 : null,
+      prev_page: currentPage > 1 ? currentPage - 1 : null,
+    };
+
+    res.status(200).json({
+      message: 'Daftar resep',
+      data: resepDetailWithCountUserSave,
+      meta: meta,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+
+const deleteResep = async (req, res, next) => {
+  try {
+    const resepId = req.params.id;
+
+    const existingResep = await prisma.resep.findUnique({
+      where: {
+        id: parseInt(resepId),
+      },
+    });
+
+    if (!existingResep) {
+      return res.status(404).json({
+        message: 'Resep tidak ditemukan',
+      });
+    }
+
+    await prisma.resep.update({
+      where: {
+        id: parseInt(resepId),
+      },
+      data: {
+        deletedAt: new Date(),
+      },
+    });
+
+    res.status(200).json({
+      message: 'Berhasil menghapus resep.',
+    });
+  } catch (error) {
+    console.error(error);
+    next(error);
+  }
+};
 
 
 const updateResep = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { name, description, history, culture, ingredients, alternatifIngredient } = req.body;
+    const { name, description, history, culture, ingredients, alternatifIngredient, categories_id } = req.body;
 
-    VSResep.parse(req.body);
+    VSUpdateResep.parse(req.body);
 
     const existingResep = await prisma.resep.findUnique({
       where: {
@@ -177,21 +238,29 @@ const updateResep = async (req, res, next) => {
       });
     }
 
+    const updateData = {
+      name,
+      description,
+      history,
+      culture,
+      ingredients,
+      alternatifIngredient,
+    };
+
+    if (categories_id) {
+      updateData.categories = {
+        connect: {
+          id: categories_id,
+        },
+      };
+    }
+
     const updatedResep = await prisma.resep.update({
       where: {
         id: parseInt(id),
       },
-      data: {
-        name,
-        description,
-        history,
-        culture,
-        ingredients,
-        alternatifIngredient,
-      },
+      data: updateData,
     });
-
-
 
     res.status(200).json({
       message: 'Resep updated successfully',
@@ -203,7 +272,7 @@ const updateResep = async (req, res, next) => {
         culture: updatedResep.culture,
         ingredients: updatedResep.ingredients,
         alternatifIngredient: updatedResep.alternatifIngredient,
-      }
+      },
     });
   } catch (error) {
     console.error(error);
@@ -249,28 +318,111 @@ const getResepById = async (req, res, next) => {
   try {
     const { id } = req.params;
 
-    const resep = await prisma.resep.findUnique({
+    const resepById = await prisma.resep.findMany({
       where: {
         id: parseInt(id),
         deletedAt: null,
       },
-      include: {
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        history: true,
+        culture: true,
+        ingredients: true,
+        alternatifIngredient: true,
+        averageRating: true,
         resepImages: {
           where: {
             deletedAt: null,
+          },
+          select: {
+            id: true,
+            image_url: true,
+          },
+        },
+        categories: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        reviews: {
+          select: {
+            id: true,
+            user: {
+              select: {
+                id: true,
+                username: true,
+                avatar: true,
+              },
+            },
+            rating: true,
+            description: true,
+            createdAt: true,
           },
         },
       },
     });
 
-    if (!resep) {
+    if (!resepById || resepById.length === 0) {
       return res.status(404).json({
         message: 'Resep not found',
       });
     }
 
+    const resepListWithCount = await Promise.all(resepById.map(async (resepMap) => {
+      const userCount = await prisma.savedRecipe.count({
+        where: {
+          resepId: resepMap.id,
+        },
+      });
+
+      const ratingCount = {
+        current_rating_five: 0,
+        current_rating_four: 0,
+        current_rating_three: 0,
+        current_rating_two: 0,
+        current_rating_one: 0,
+      };
+
+      resepMap.reviews.forEach((review) => {
+        switch (review.rating) {
+          case 5:
+            ratingCount.current_rating_five++;
+            break;
+          case 4:
+            ratingCount.current_rating_four++;
+            break;
+          case 3:
+            ratingCount.current_rating_three++;
+            break;
+          case 2:
+            ratingCount.current_rating_two++;
+            break;
+          case 1:
+            ratingCount.current_rating_one++;
+            break;
+          default:
+            break;
+        }
+      });
+
+      const reviewsWithFormattedDate = resepMap.reviews.map((review) => ({
+        ...review,
+        createdAt: review.createdAt ? formatDate(review.createdAt) : null,
+      }));
+      return {
+        ...resepMap,
+        saved_recipe: userCount,
+        ...ratingCount,
+        reviews: reviewsWithFormattedDate,
+      };
+    }));
+
     res.status(200).json({
-      data: resep,
+      message: 'Detail resep',
+      data: resepListWithCount,
     });
   } catch (error) {
     console.error(error);
@@ -278,10 +430,27 @@ const getResepById = async (req, res, next) => {
   }
 };
 
+const formatDate = (date) => {
+  const options = {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  };
+
+  const formattedDate = new Date(date).toLocaleDateString('en-US', options);
+
+  const reversedDate = formattedDate.replace(/\//g, '-');
+
+  const [month, day, year] = reversedDate.split('-');
+
+  return `${year}-${month}-${day}`;
+};
+
+
 module.exports = {
   createResep,
-  getAllResep,
   createResepImage,
+  getAllResep, 
   deleteResep,
   updateResep,
   deleteResepImage,
