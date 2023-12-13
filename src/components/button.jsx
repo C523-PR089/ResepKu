@@ -5,8 +5,8 @@ export const Button = ({
   children,
   onClick,
   isLoading,
-  backgroundColor = "bg-black hover:bg-zinc-800",
-  textColor = "text-white",
+  backgroundColor = "bg-[#1B4242] hover:bg-[#1B4847]",
+  textColor = "text-slate-200",
   width = "w-full",
   href,
   type,
@@ -27,7 +27,7 @@ export const Button = ({
       className={`flex ${width} items-center justify-center px-4 md:py-3 py-2 rounded-md md:text-lg text-base 
     mt-2 font-semibold ${backgroundColor} ${textColor} disabled:bg-gray-400 disabled:text-gray-300 disabled:cursor-not-allowed`}
       onClick={onClick}>
-      {isLoading ? <Spinner width="w-5" height="h-5" /> : children}
+      {isLoading ? <Spinner width="w-7" height="h-7" /> : children}
     </button>
   );
 };

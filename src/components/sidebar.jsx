@@ -2,6 +2,7 @@ import { useEffect, useMemo } from "react";
 import { Heart, House, Logout } from "./icons";
 import {
   getUserMe,
+  getUserRole,
   removeToken,
   useAvatar,
   useShowSidebar,
@@ -9,12 +10,14 @@ import {
   useUserData,
 } from "../utils";
 import { Link, useNavigate } from "react-router-dom";
-import { MdKeyboardDoubleArrowLeft } from "react-icons/md";
+import { MdAssignmentAdd, MdKeyboardDoubleArrowLeft } from "react-icons/md";
 export const Sidebar = () => {
   const { getUserData, setUserData } = useUserData();
   const { getGlobalAvatar } = useAvatar();
   const { getSidebarName } = useSidebarName();
   const { getShowSidebar, setShowSidebar } = useShowSidebar();
+
+  const role = getUserRole();
 
   const getUser = async () => {
     try {
@@ -42,9 +45,14 @@ export const Sidebar = () => {
       link: "/dashboard",
     },
     {
-      name: "Favorit",
-      icon: <Heart />,
-      link: "/dashboard/favorites",
+      name: role === "user" ? "Favorit" : "Tambah Resep",
+      icon:
+        role === "user" ? (
+          <Heart />
+        ) : (
+          <MdAssignmentAdd className="lg:text-xl md:text-2xl text-xl" />
+        ),
+      link: role === "user" ? "/dashboard/favorites" : "/dashboard/createresep",
     },
   ];
 
@@ -59,13 +67,18 @@ export const Sidebar = () => {
         getShowSidebar
           ? "-translate-x-0"
           : "lg:-translate-x-0 -translate-x-full"
-      }   lg:w-[20%] w-[20rem] h-full flex flex-col items-center justify-between bg-black lg:px-6 px-2 py-8 text-white duration-200`}>
-      <section className="flex flex-col items-center justify-center gap-10">
-        <figure className="bg-zinc-800 border-2 border-slate-500 py-2 px-4 rounded-3xl">
-          <img src="/resepku-plain-cut.png" alt="resepku" width={"150px"} />
+      }   lg:w-[20%] w-[20rem] h-full flex flex-col items-center justify-between bg-[#1B4242] lg:px-6 px-2 py-8 text-slate-100 duration-200`}>
+      <section className="relative flex flex-col items-center justify-center gap-10">
+        <figure className="px-4 rounded-3xl">
+          <img
+            src="/resepku-new.png"
+            alt="resepku"
+            width={"150px"}
+            className="max-h-[200px]"
+          />
         </figure>
 
-        <div className="flex flex-col items-center gap-4">
+        <div className="relative flex flex-col items-center gap-4 bottom-12">
           <figure className="flex items-center justify-center">
             {user ? (
               <img
@@ -84,7 +97,7 @@ export const Sidebar = () => {
             )}
           </figure>
 
-          <div className="flex flex-col justify-center items-center gap-1">
+          <div className="relative flex flex-col justify-center items-center gap-1 bottom-1">
             {user && (
               <>
                 <span className="text-sm opacity-70">Selamat Datang,</span>
@@ -96,14 +109,14 @@ export const Sidebar = () => {
           </div>
         </div>
 
-        <div className="flex flex-col justify-center items-center gap-6">
+        <div className="relative flex flex-col justify-center items-center gap-6 bottom-16">
           {sideList.map((item, idx) => (
             <Link
               key={idx}
               to={item.link}
-              className="flex justify-center items-center gap-4 py-2 px-6">
+              className="flex justify-center items-center gap-4 py-2 xl:px-6">
               {item.icon}
-              <span className="text-lg font-semibold">{item.name}</span>
+              <span className={`text-lg font-semibold`}>{item.name}</span>
             </Link>
           ))}
         </div>
