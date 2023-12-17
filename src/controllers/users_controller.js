@@ -66,13 +66,17 @@ const getAllSavedResep = async (req, res, next) => {
     const userId = req.user.id;
     const username = req.user.username;
 
+    const limit = 8;
+    const page = req.query.page ? parseInt(req.query.page) : 1;
+
+    const offset = (page - 1) * limit;
+
     const savedRecipes = await prisma.savedRecipe.findMany({
       where: {
         userId: userId,
         resep: {
           deletedAt: null
         }
-        
       },
       select: {
         resep: {
@@ -84,6 +88,7 @@ const getAllSavedResep = async (req, res, next) => {
             culture: true,
             ingredients: true,
             alternatifIngredient: true,
+            averageRating: true,
             resepImages: {
               where: {
                 deletedAt: null,
@@ -102,23 +107,48 @@ const getAllSavedResep = async (req, res, next) => {
           },
         },
       },
+      take: limit,
+      skip: offset,
     });
+
     if (savedRecipes.length === 0) {
       return res.status(200).json({
         message: `Hai ${username}, kamu belum menyimpan resep nih. Ayo simpan resep terbaik kamu!`,
         data: [],
+        meta: {
+          current_page: page,
+          total_saved_resep: 0,
+        },
       });
     }
 
+    const totalSavedResep = await prisma.savedRecipe.count({
+      where: {
+        userId: userId,
+        resep: {
+          deletedAt: null
+        }
+      },
+    });
+
+    const totalPages = Math.ceil(totalSavedResep / limit);
 
     res.status(200).json({
       message: `Hai ${username}, berikut list resep yang kamu simpan`,
       data: savedRecipes.map(savedRecipe => savedRecipe.resep),
+      meta: {
+        current_page: page,
+        total_saved_resep: totalSavedResep,
+        total_page: totalPages,
+        next_page: page < totalPages ? page + 1 : null,
+        prev_page: page > 1 ? page - 1 : null,
+      },
     });
   } catch (error) {
     next(error);
   }
 };
+
 
 const updateProfile = async (req, res, next) => {
   try {
